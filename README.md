@@ -88,8 +88,7 @@ MONGODB_URI=mongodb://localhost:27017/voice-notes-ai
 # Google Gemini AI API Key
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# JWT Secret (generate a random string)
-JWT_SECRET=your_jwt_secret_here
+
 
 # CORS Configuration
 CORS_ORIGIN=http://localhost:5173
@@ -278,7 +277,6 @@ NODE_ENV=production
 PORT=process.env.PORT
 MONGODB_URI=your_production_mongodb_uri
 GEMINI_API_KEY=your_production_gemini_api_key
-JWT_SECRET=your_production_jwt_secret
 CORS_ORIGIN=https://your-frontend-domain.com
 ```
 
