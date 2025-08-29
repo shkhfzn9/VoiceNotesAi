@@ -1,0 +1,459 @@
+import React, { useEffect, useRef, useState } from 'react'
+import api from '../api'
+
+export default function Recorder({ onCreated }) {
+  const [support, setSupport] = useState({ mic: false, stt: false })
+  const [status, setStatus] = useState('idle') // idle | recording | processing | transcribing
+  const [liveTranscript, setLiveTranscript] = useState('')
+  const [duration, setDuration] = useState(0)
+  const mediaRecorderRef = useRef(null)
+  const mediaStreamRef = useRef(null)
+  const chunksRef = useRef([])
+  const startTsRef = useRef(0)
+  const recogRef = useRef(null)
+  
+  // Add unique transcript tracking for each recording session
+  const currentTranscriptRef = useRef('')
+  const recordingIdRef = useRef(null)
+
+  useEffect(() => {
+    async function check() {
+      const mic = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      const hasSTT = !!SpeechRecognition
+      
+      console.log('[Recorder] Browser support check:')
+      console.log('  - Microphone:', mic)
+      console.log('  - Speech Recognition:', hasSTT)
+      console.log('  - SpeechRecognition:', !!window.SpeechRecognition)
+      console.log('  - webkitSpeechRecognition:', !!window.webkitSpeechRecognition)
+      
+      setSupport({ mic, stt: hasSTT })
+    }
+    check()
+    
+    // Cleanup function to ensure resources are released
+    return () => {
+      console.log('[Recorder] Component unmounting, cleaning up...')
+      if (recogRef.current) {
+        try { recogRef.current.stop() } catch { /* ignore */ }
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(t => t.stop())
+      }
+    }
+  }, [])
+
+  // Test function to debug speech recognition
+  function testSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Speech Recognition not supported in this browser')
+      return
+    }
+    
+    console.log('[Recorder] Testing speech recognition...')
+    const testRecog = new SpeechRecognition()
+    testRecog.lang = 'en-US'
+    testRecog.continuous = false
+    testRecog.interimResults = false
+    testRecog.maxAlternatives = 1
+    
+    testRecog.onstart = () => console.log('[Test] Speech recognition started')
+    testRecog.onresult = (e) => {
+      const transcript = e.results[0][0].transcript
+      console.log('[Test] Transcript received:', transcript)
+      alert('Test successful! Transcript: ' + transcript)
+    }
+    testRecog.onerror = (e) => {
+      console.error('[Test] Speech recognition error:', e.error, e.message)
+      alert('Test failed: ' + e.error + ' - ' + e.message)
+    }
+    testRecog.onend = () => console.log('[Test] Speech recognition ended')
+    
+    try {
+      testRecog.start()
+    } catch (err) {
+      console.error('[Test] Failed to start test:', err)
+      alert('Failed to start test: ' + err.message)
+    }
+  }
+
+  // Function to completely reset recorder state
+  function resetRecorder() {
+    console.log('[Recorder] Resetting recorder state...')
+    
+    // Stop any ongoing processes
+    if (recogRef.current) {
+      try { 
+        recogRef.current.stop() 
+        recogRef.current = null
+      } catch { /* ignore */ }
+    }
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop()
+      } catch { /* ignore */ }
+    }
+    
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(t => t.stop())
+      mediaStreamRef.current = null
+    }
+    
+    // Reset all state and session tracking
+    setStatus('idle')
+    setLiveTranscript('')
+    setDuration(0)
+    chunksRef.current = []
+    currentTranscriptRef.current = ''
+    recordingIdRef.current = null
+    
+    console.log('[Recorder] Recorder state and session tracking reset complete')
+  }
+
+  async function start() {
+    if (!support.mic) return alert('Microphone not supported in this browser.')
+    
+    // Create unique recording session
+    const newRecordingId = Date.now().toString()
+    recordingIdRef.current = newRecordingId
+    currentTranscriptRef.current = ''
+    
+    console.log('[Recorder] Starting new recording session:', newRecordingId)
+    
+    // Reset all state for new recording
+    setStatus('recording')
+    setLiveTranscript('')
+    setDuration(0)
+    chunksRef.current = []
+    
+    // Clear any previous speech recognition
+    if (recogRef.current) {
+      try { 
+        recogRef.current.stop() 
+        recogRef.current = null
+      } catch { /* ignore */ }
+    }
+
+    // Start mic
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 44100
+      }
+    })
+    mediaStreamRef.current = stream
+    const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+    mediaRecorderRef.current = mr
+    startTsRef.current = Date.now()
+
+    mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+    mr.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const secs = Math.round((Date.now() - startTsRef.current) / 1000)
+      setDuration(secs)
+      
+      console.log('[Recorder] Media recorder stopped, waiting for final transcript...')
+      
+      // Wait a bit for final speech recognition results to be processed
+      if (support.stt && recogRef.current) {
+        console.log('[Recorder] Waiting for final transcript processing...')
+        await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second for final transcripts
+      }
+      
+      // Pass the recording ID to ensure we use the correct transcript
+      await sendToServer(blob, secs, newRecordingId)
+      
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(t => t.stop())
+        mediaStreamRef.current = null
+      }
+    }
+
+    mr.start(100)
+
+    // Start STT (if available) with a longer delay to ensure mic is fully ready
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (SpeechRecognition) {
+      console.log('[Recorder] Starting speech recognition for session:', newRecordingId)
+      
+      // Set a timeout to detect if speech recognition fails to start
+      const sttTimeout = setTimeout(() => {
+        if (recordingIdRef.current === newRecordingId && (!currentTranscriptRef.current || !currentTranscriptRef.current.trim())) {
+          console.warn('[Recorder] Speech recognition timeout - no transcript detected')
+          // Don't change status here, let the user continue recording
+        }
+      }, 5000) // 5 second timeout
+      
+      setTimeout(() => {
+        try {
+          const recog = new SpeechRecognition()
+          recog.lang = 'en-US'
+          recog.continuous = true
+          recog.interimResults = true
+          recog.maxAlternatives = 1
+          
+          // Better speech recognition settings
+          if (recog.grammars) {
+            // Some browsers support grammars for better accuracy
+            console.log('[STT] Using enhanced speech recognition')
+          }
+          
+          recog.onresult = (e) => {
+            console.log('[STT] Raw results received:', e.results)
+            
+            // Clear the timeout since we got results
+            clearTimeout(sttTimeout)
+            
+            // Only process results for the current recording session
+            if (recordingIdRef.current !== newRecordingId) {
+              console.log('[STT] Ignoring transcript for old session:', recordingIdRef.current)
+              return
+            }
+            
+            let txt = ''
+            let hasFinalResults = false
+            
+            for (let i = 0; i < e.results.length; i++) {
+              const result = e.results[i]
+              if (result.isFinal) {
+                hasFinalResults = true
+                txt += result[0].transcript + ' '
+              } else {
+                // For interim results, include them if we don't have final results yet
+                // This helps capture partial speech while the user is still talking
+                if (!hasFinalResults) {
+                  txt += result[0].transcript
+                }
+              }
+            }
+            
+            const cleanText = txt.trim()
+            console.log('[STT] Transcript update for session', newRecordingId, ':', cleanText, '(final:', hasFinalResults, ')')
+            
+            // Update both the ref and the state
+            currentTranscriptRef.current = cleanText
+            setLiveTranscript(cleanText)
+          }
+          
+          recog.onerror = (e) => {
+            console.warn('[STT] Error:', e.error, e.message)
+            clearTimeout(sttTimeout)
+            
+            if (e.error === 'not-allowed') {
+              alert('Microphone access denied. Please allow microphone access and try again.')
+            } else if (e.error === 'no-speech') {
+              console.log('[STT] No speech detected - this is normal at the start')
+            } else if (e.error === 'network') {
+              console.warn('[STT] Network error - speech recognition may not work properly')
+            } else {
+              console.warn('[STT] Unknown error:', e.error, e.message)
+            }
+          }
+          
+          recog.onend = () => { 
+            console.log('[STT] Speech recognition ended for session:', newRecordingId)
+            clearTimeout(sttTimeout)
+            /* will end when we stop() */ 
+          }
+          
+          recog.onstart = () => {
+            console.log('[STT] Speech recognition started for session:', newRecordingId)
+            setStatus('transcribing')
+          }
+          
+          recog.start()
+          recogRef.current = recog
+          console.log('[Recorder] Speech recognition started successfully for session:', newRecordingId)
+        } catch (err) {
+          console.error('[Recorder] Failed to start speech recognition:', err)
+          clearTimeout(sttTimeout)
+          setStatus('recording') // Fallback to just recording
+        }
+      }, 1000) // Longer delay to ensure mic is fully ready
+    } else {
+      console.log('[Recorder] No speech recognition support, recording only')
+      setStatus('recording') // No STT support, just recording
+    }
+  }
+
+  async function stop() {
+    console.log('[Recorder] Stopping recording...')
+    
+    // Stop speech recognition first with a small delay to ensure final transcripts are processed
+    if (recogRef.current) {
+      try { 
+        console.log('[Recorder] Stopping speech recognition...')
+        // Add a small delay to ensure final transcripts are processed
+        setTimeout(() => {
+          try {
+            if (recogRef.current) {
+              recogRef.current.stop()
+              recogRef.current = null
+              console.log('[Recorder] Speech recognition stopped after delay')
+            }
+          } catch (err) {
+            console.warn('[Recorder] Error stopping speech recognition after delay:', err)
+          }
+        }, 500) // 500ms delay to process final transcripts
+      } catch (err) { 
+        console.warn('[Recorder] Error stopping speech recognition:', err)
+      }
+    }
+    
+    // Stop media recorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      console.log('[Recorder] Stopping media recorder...')
+      setStatus('processing')
+      mediaRecorderRef.current.stop()
+    }
+    
+    // Stop microphone stream
+    if (mediaStreamRef.current) {
+      console.log('[Recorder] Stopping microphone stream...')
+      mediaStreamRef.current.getTracks().forEach(track => {
+        track.stop()
+        console.log('[Recorder] Stopped track:', track.kind)
+      })
+      mediaStreamRef.current = null
+    }
+  }
+
+  async function sendToServer(blob, secs, recordingId) {
+    try {
+      console.log('[Recorder] Sending to server for session:', recordingId)
+      console.log('[Recorder] Current transcript for this session:', currentTranscriptRef.current)
+      console.log('[Recorder] Live transcript state:', liveTranscript)
+      
+      // Verify this is still the current recording session
+      if (recordingIdRef.current !== recordingId) {
+        console.warn('[Recorder] Recording session mismatch, aborting upload')
+        setStatus('idle')
+        return
+      }
+      
+      // Capture the transcript for this specific recording session
+      let transcript = currentTranscriptRef.current || liveTranscript || ''
+      
+      console.log('[Recorder] Final transcript to use:', transcript)
+      console.log('[Recorder] Transcript length:', transcript.length)
+      console.log('[Recorder] Has transcript:', !!transcript.trim())
+      
+      // If we have speech recognition support but no transcript, the user might not have spoken
+      if (support.stt && (!transcript || !transcript.trim())) {
+        console.log('[Recorder] No transcript detected, prompting user for manual entry')
+        
+        // Check if we're still waiting for speech recognition to finish
+        if (recogRef.current && recogRef.current.state !== 'inactive') {
+          console.log('[Recorder] Speech recognition still active, waiting a bit more...')
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // Check transcript again after waiting
+          transcript = currentTranscriptRef.current || liveTranscript || ''
+          console.log('[Recorder] Transcript after waiting:', transcript)
+        }
+        
+        if (!transcript || !transcript.trim()) {
+          const manualTranscript = prompt(
+            'No transcript was detected for this recording. This could mean:\n' +
+            '• You didn\'t speak clearly enough\n' +
+            '• Microphone permissions were denied\n' +
+            '• Speech recognition failed to start\n' +
+            '• Speech recognition is still processing\n\n' +
+            'Please enter what you said, or click Cancel to re-record:',
+            ''
+          )
+          if (manualTranscript === null) {
+            // User clicked Cancel
+            console.log('[Recorder] User cancelled manual transcript entry for session:', recordingId)
+            setStatus('idle')
+            return
+          }
+          transcript = manualTranscript
+        }
+      }
+      
+      // If no speech recognition support, always prompt for manual entry
+      if (!support.stt) {
+        console.log('[Recorder] No STT support, prompting for manual transcript')
+        transcript = prompt('Your browser does not support Web Speech API. Enter a transcript for this note:', '') || ''
+      }
+
+      // Final validation - if still no transcript, cancel the operation
+      if (!transcript || !transcript.trim()) {
+        console.error('[Recorder] Still no transcript after all attempts')
+        alert('Transcript is required. Please speak clearly or enter manually.')
+        setStatus('idle')
+        return
+      }
+
+      const fd = new FormData()
+      fd.append('audio', blob, 'note.webm')
+      fd.append('transcript', transcript.trim())
+      fd.append('duration', String(secs))
+      fd.append('recordingId', recordingId) // Append recordingId to the FormData
+      // Title can be first 60 chars of transcript or a timestamp
+      const t = transcript?.trim() ? transcript.trim().slice(0, 60) : new Date().toLocaleString()
+      fd.append('title', t)
+
+      // Log what we're sending for debugging
+      console.log('[Recorder] Sending data for session', recordingId, ':', {
+        transcript: transcript.trim(),
+        duration: secs,
+        title: t,
+        blobSize: blob.size,
+        blobType: blob.type
+      })
+
+      // Don't set Content-Type manually - let browser handle multipart boundary
+      const res = await api.post('/notes', fd)
+      if (onCreated) onCreated(res.data)
+      
+      // Reset state after successful upload
+      setStatus('idle')
+      setLiveTranscript('')
+      setDuration(0)
+      
+      console.log('[Recorder] Upload successful for session:', recordingId, 'state reset')
+    } catch (e) {
+      console.error('[Recorder] Upload error for session:', recordingId, e)
+      console.error('[Recorder] Response data:', e.response?.data)
+      console.error('[Recorder] Response status:', e.response?.status)
+      alert('Upload failed: ' + (e.response?.data?.error || e.message))
+      setStatus('idle')
+    }
+  }
+
+  return (
+    <div className="recorder">
+      <div className="buttons">
+        {status === 'idle' && <button className="button primary" onClick={start}>Start Recording</button>}
+        {status !== 'idle' && <button className="button danger" onClick={stop}>Stop Recording</button>}
+        {/* {status === 'idle' && <button className="button secondary" onClick={resetRecorder}>Reset</button>}
+        {status === 'idle' && <button className="button secondary" onClick={testSpeechRecognition}>Test STT</button>} */}
+      </div>
+      <div>
+        <div className="status">
+          <b>Status:</b> {status}
+          {status === 'recording' && support.stt && <span> • Starting speech recognition...</span>}
+          {status === 'transcribing' && <span> • Speak now - your words will appear below</span>}
+          {!support.stt && <span className="small"> (Tip: Use Chrome/Edge for in-browser transcription)</span>}
+        </div>
+        <div className="live" aria-live="polite">
+          {liveTranscript || (
+            status === 'transcribing' 
+              ? 'Start speaking... your transcript will appear here'
+              : status === 'recording'
+              ? 'Initializing speech recognition...'
+              : '(live transcript will appear here while recording...)'
+          )}
+        </div>
+        {duration ? <div className="small">Recorded duration: {duration}s</div> : null}
+      </div>
+    </div>
+  )
+}
