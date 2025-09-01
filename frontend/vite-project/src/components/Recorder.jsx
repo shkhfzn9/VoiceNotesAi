@@ -184,6 +184,20 @@ export default function Recorder({ onCreated }) {
         audio: true  // Simple constraint that works on all devices
       })
       
+      // Check if stream is active and has audio tracks
+      if (!stream || !stream.active) {
+        throw new Error('Stream is not active after creation')
+      }
+      
+      const audioTracks = stream.getAudioTracks()
+      if (audioTracks.length === 0) {
+        throw new Error('No audio tracks found in stream')
+      }
+      
+      console.log('[Recorder] Stream active:', stream.active)
+      console.log('[Recorder] Audio tracks:', audioTracks.length)
+      console.log('[Recorder] Track state:', audioTracks[0].readyState)
+      
       mediaStreamRef.current = stream
       console.log('[Recorder] Microphone access granted')
       
@@ -198,6 +212,16 @@ export default function Recorder({ onCreated }) {
           chunksRef.current.push(e.data)
           console.log('[Recorder] Data chunk received, size:', e.data.size)
         }
+      }
+      
+      mr.onerror = (e) => {
+        console.error('[Recorder] MediaRecorder error:', e.error)
+        setError('Recording error: ' + e.error)
+        setStatus('idle')
+      }
+      
+      mr.onstart = () => {
+        console.log('[Recorder] MediaRecorder started successfully')
       }
       
       mr.onstop = async () => {
@@ -224,6 +248,32 @@ export default function Recorder({ onCreated }) {
 
       mr.start(1000) // Record in 1-second chunks
       console.log('[Recorder] Media recorder started')
+      
+      // Monitor stream health
+      window.streamHealthCheckInterval = setInterval(() => {
+        if (mediaStreamRef.current) {
+          const isActive = mediaStreamRef.current.active
+          const audioTracks = mediaStreamRef.current.getAudioTracks()
+          const hasActiveTracks = audioTracks.some(track => track.readyState === 'live')
+          
+          console.log('[Recorder] Stream health check - Active:', isActive, 'Tracks:', audioTracks.length, 'Live tracks:', hasActiveTracks)
+          
+          if (!isActive || !hasActiveTracks) {
+            console.error('[Recorder] Stream became inactive unexpectedly')
+            setError('Microphone stream was closed unexpectedly. Please try again.')
+            setStatus('idle')
+            if (window.streamHealthCheckInterval) {
+              clearInterval(window.streamHealthCheckInterval)
+              window.streamHealthCheckInterval = null
+            }
+          }
+        } else {
+          if (window.streamHealthCheckInterval) {
+            clearInterval(window.streamHealthCheckInterval)
+            window.streamHealthCheckInterval = null
+          }
+        }
+      }, 2000) // Check every 2 seconds
 
       // Start STT using the exact same approach that worked in the test
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -317,13 +367,30 @@ export default function Recorder({ onCreated }) {
       }
     } catch (error) {
       console.error('[Recorder] Error starting recording:', error)
-      setError('Failed to start recording: ' + error.message)
+      
+      // Try a fallback approach for mobile browsers
+      if (mobileDetected && error.name === 'NotAllowedError') {
+        setError('Microphone access denied. Please allow microphone access and try again.')
+      } else if (mobileDetected && error.name === 'NotReadableError') {
+        setError('Microphone is in use by another application. Please close other apps using the microphone.')
+      } else if (mobileDetected && error.name === 'NotFoundError') {
+        setError('No microphone found. Please check your device has a microphone.')
+      } else {
+        setError('Failed to start recording: ' + error.message)
+      }
+      
       setStatus('idle')
     }
   }
 
   async function stop() {
     console.log('[Recorder] Stopping recording...')
+    
+    // Clear any stream health checks
+    if (window.streamHealthCheckInterval) {
+      clearInterval(window.streamHealthCheckInterval)
+      window.streamHealthCheckInterval = null
+    }
     
     // Stop speech recognition first with a small delay to ensure final transcripts are processed
     if (recogRef.current) {
