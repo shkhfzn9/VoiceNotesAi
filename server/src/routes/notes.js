@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 const {
   getNotes,
   getNoteById,
@@ -12,10 +13,17 @@ const {
   summarizeNote
 } = require('../controllers/notesController');
 
+// Ensure uploads directory exists
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('[Routes] Created uploads directory:', uploadsDir);
+}
+
 // Multer disk storage for audio files
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '..', '..', 'uploads'));
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname || '.webm') || '.webm';

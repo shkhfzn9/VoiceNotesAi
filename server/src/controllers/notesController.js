@@ -96,9 +96,13 @@ exports.deleteNote = async (req, res) => {
     const rel = note.audio?.url || '';
     if (rel && rel.startsWith('/uploads/')) {
       const p = path.join(__dirname, '..', '..', rel);
-      fs.unlink(p, (err) => {
-        if (err) console.warn('[Delete] Could not remove file:', p, err.message);
-      });
+      if (fs.existsSync(p)) {
+        fs.unlink(p, (err) => {
+          if (err) console.warn('[Delete] Could not remove file:', p, err.message);
+        });
+      } else {
+        console.warn('[Delete] File does not exist:', p);
+      }
     }
 
     await note.deleteOne();
