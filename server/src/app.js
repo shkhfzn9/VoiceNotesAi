@@ -17,12 +17,30 @@ if (!fs.existsSync(uploadsDir)) {
   console.log('[Server] Created uploads directory:', uploadsDir);
 }
 
+// CORS configuration
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://voice-notes-ai-nu.vercel.app',
+  process.env.CLIENT_ORIGIN
+].filter(Boolean);
+
+console.log('[Server] Allowed CORS origins:', allowedOrigins);
+
 app.use(cors({ 
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    process.env.CLIENT_ORIGIN
-  ].filter(Boolean)
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log('[CORS] Allowed request from:', origin);
+      callback(null, true);
+    } else {
+      console.warn('[CORS] Blocked request from:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
