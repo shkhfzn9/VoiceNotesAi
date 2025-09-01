@@ -1,12 +1,12 @@
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://voicenotesai.onrender.com';
 
 console.log('[API] Using base URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
-  timeout: 20000
+  timeout: 30000 // Increased timeout for deployed backend
 });
 
 // Add request interceptor for debugging
