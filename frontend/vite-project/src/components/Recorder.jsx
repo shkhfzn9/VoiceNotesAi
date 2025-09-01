@@ -7,6 +7,7 @@ export default function Recorder({ onCreated }) {
   const [liveTranscript, setLiveTranscript] = useState('')
   const [duration, setDuration] = useState(0)
   const [mobileDetected, setMobileDetected] = useState(false)
+  const [error, setError] = useState('')
   const mediaRecorderRef = useRef(null)
   const mediaStreamRef = useRef(null)
   const chunksRef = useRef([])
@@ -22,6 +23,7 @@ export default function Recorder({ onCreated }) {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     setMobileDetected(isMobile)
     console.log('[Recorder] Mobile device detected:', isMobile)
+    console.log('[Recorder] User Agent:', navigator.userAgent)
   }, [])
 
   useEffect(() => {
@@ -75,41 +77,6 @@ export default function Recorder({ onCreated }) {
     return ''
   }
 
-  // Test function to debug speech recognition
-  function testSpeechRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      alert('Speech Recognition not supported in this browser')
-      return
-    }
-    
-    console.log('[Recorder] Testing speech recognition...')
-    const testRecog = new SpeechRecognition()
-    testRecog.lang = 'en-US'
-    testRecog.continuous = false
-    testRecog.interimResults = false
-    testRecog.maxAlternatives = 1
-    
-    testRecog.onstart = () => console.log('[Test] Speech recognition started')
-    testRecog.onresult = (e) => {
-      const transcript = e.results[0][0].transcript
-      console.log('[Test] Transcript received:', transcript)
-      alert('Test successful! Transcript: ' + transcript)
-    }
-    testRecog.onerror = (e) => {
-      console.error('[Test] Speech recognition error:', e.error, e.message)
-      alert('Test failed: ' + e.error + ' - ' + e.message)
-    }
-    testRecog.onend = () => console.log('[Test] Speech recognition ended')
-    
-    try {
-      testRecog.start()
-    } catch (err) {
-      console.error('[Test] Failed to start test:', err)
-      alert('Failed to start test: ' + err.message)
-    }
-  }
-
   // Function to completely reset recorder state
   function resetRecorder() {
     console.log('[Recorder] Resetting recorder state...')
@@ -137,6 +104,7 @@ export default function Recorder({ onCreated }) {
     setStatus('idle')
     setLiveTranscript('')
     setDuration(0)
+    setError('')
     chunksRef.current = []
     currentTranscriptRef.current = ''
     recordingIdRef.current = null
@@ -145,7 +113,13 @@ export default function Recorder({ onCreated }) {
   }
 
   async function start() {
-    if (!support.mic) return alert('Microphone not supported in this browser.')
+    if (!support.mic) {
+      setError('Microphone not supported in this browser.')
+      return
+    }
+    
+    // Reset error state
+    setError('')
     
     // Create unique recording session
     const newRecordingId = Date.now().toString()
@@ -169,13 +143,18 @@ export default function Recorder({ onCreated }) {
     }
 
     try {
-      // Start mic with mobile-optimized settings
-      const audioConstraints = {
+      // Simplified audio constraints for better mobile compatibility
+      const audioConstraints = mobileDetected ? {
+        // Minimal constraints for mobile
+        echoCancellation: true,
+        noiseSuppression: true
+      } : {
+        // Desktop constraints
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        sampleRate: mobileDetected ? 22050 : 44100, // Lower sample rate for mobile
-        channelCount: 1 // Mono for better mobile compatibility
+        sampleRate: 44100,
+        channelCount: 1
       }
       
       console.log('[Recorder] Requesting microphone with constraints:', audioConstraints)
@@ -185,6 +164,7 @@ export default function Recorder({ onCreated }) {
       })
       
       mediaStreamRef.current = stream
+      console.log('[Recorder] Microphone access granted')
       
       // Get the best audio format for this browser
       const audioFormat = getBestAudioFormat()
@@ -209,7 +189,7 @@ export default function Recorder({ onCreated }) {
         // Wait a bit for final speech recognition results to be processed
         if (support.stt && recogRef.current) {
           console.log('[Recorder] Waiting for final transcript processing...')
-          await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second for final transcripts
+          await new Promise(resolve => setTimeout(resolve, 1500)) // Wait 1.5 seconds for final transcripts
         }
         
         // Pass the recording ID to ensure we use the correct transcript
@@ -221,11 +201,12 @@ export default function Recorder({ onCreated }) {
         }
       }
 
-      mr.start(100)
+      mr.start(1000) // Record in 1-second chunks
+      console.log('[Recorder] Media recorder started')
 
       // Start STT (if available) with mobile-specific settings
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-      if (SpeechRecognition) {
+      if (SpeechRecognition && support.stt) {
         console.log('[Recorder] Starting speech recognition for session:', newRecordingId)
         
         // Set a timeout to detect if speech recognition fails to start
@@ -234,7 +215,7 @@ export default function Recorder({ onCreated }) {
             console.warn('[Recorder] Speech recognition timeout - no transcript detected')
             // Don't change status here, let the user continue recording
           }
-        }, mobileDetected ? 8000 : 5000) // Longer timeout for mobile
+        }, mobileDetected ? 10000 : 5000) // Longer timeout for mobile
         
         setTimeout(() => {
           try {
@@ -246,7 +227,6 @@ export default function Recorder({ onCreated }) {
             
             // Mobile-specific settings
             if (mobileDetected) {
-              // Some mobile browsers work better with these settings
               console.log('[STT] Using mobile-optimized speech recognition settings')
             }
             
@@ -291,16 +271,18 @@ export default function Recorder({ onCreated }) {
               clearTimeout(sttTimeout)
               
               if (e.error === 'not-allowed') {
-                alert('Microphone access denied. Please allow microphone access and try again.')
+                setError('Microphone access denied. Please allow microphone access and try again.')
               } else if (e.error === 'no-speech') {
                 console.log('[STT] No speech detected - this is normal at the start')
               } else if (e.error === 'network') {
                 console.warn('[STT] Network error - speech recognition may not work properly')
+                setError('Network error with speech recognition. You can still record and add transcripts manually.')
               } else if (e.error === 'audio-capture') {
                 console.warn('[STT] Audio capture error - microphone may not be working')
-                alert('Microphone error detected. Please check your microphone and try again.')
+                setError('Microphone error detected. Please check your microphone and try again.')
               } else {
                 console.warn('[STT] Unknown error:', e.error, e.message)
+                setError(`Speech recognition error: ${e.error}. You can still record and add transcripts manually.`)
               }
             }
             
@@ -321,6 +303,7 @@ export default function Recorder({ onCreated }) {
             console.error('[Recorder] Failed to start speech recognition:', err)
             clearTimeout(sttTimeout)
             setStatus('recording') // Fallback to just recording
+            setError('Speech recognition failed to start. You can still record and add transcripts manually.')
           }
         }, mobileDetected ? 2000 : 1000) // Longer delay for mobile to ensure mic is fully ready
       } else {
@@ -329,7 +312,7 @@ export default function Recorder({ onCreated }) {
       }
     } catch (error) {
       console.error('[Recorder] Error starting recording:', error)
-      alert('Failed to start recording: ' + error.message)
+      setError('Failed to start recording: ' + error.message)
       setStatus('idle')
     }
   }
@@ -352,7 +335,7 @@ export default function Recorder({ onCreated }) {
           } catch (err) {
             console.warn('[Recorder] Error stopping speech recognition after delay:', err)
           }
-        }, mobileDetected ? 1000 : 500) // Longer delay for mobile
+        }, mobileDetected ? 1500 : 1000) // Longer delay for mobile
       } catch (err) { 
         console.warn('[Recorder] Error stopping speech recognition:', err)
       }
@@ -441,7 +424,7 @@ export default function Recorder({ onCreated }) {
       // Final validation - if still no transcript, cancel the operation
       if (!transcript || !transcript.trim()) {
         console.error('[Recorder] Still no transcript after all attempts')
-        alert('Transcript is required. Please speak clearly or enter manually.')
+        setError('Transcript is required. Please speak clearly or enter manually.')
         setStatus('idle')
         return
       }
@@ -473,13 +456,14 @@ export default function Recorder({ onCreated }) {
       setStatus('idle')
       setLiveTranscript('')
       setDuration(0)
+      setError('')
       
       console.log('[Recorder] Upload successful for session:', recordingId, 'state reset')
     } catch (e) {
       console.error('[Recorder] Upload error for session:', recordingId, e)
       console.error('[Recorder] Response data:', e.response?.data)
       console.error('[Recorder] Response status:', e.response?.status)
-      alert('Upload failed: ' + (e.response?.data?.error || e.message))
+      setError('Upload failed: ' + (e.response?.data?.error || e.message))
       setStatus('idle')
     }
   }
@@ -489,8 +473,7 @@ export default function Recorder({ onCreated }) {
       <div className="buttons">
         {status === 'idle' && <button className="button primary" onClick={start}>Start Recording</button>}
         {status !== 'idle' && <button className="button danger" onClick={stop}>Stop Recording</button>}
-        {/* {status === 'idle' && <button className="button secondary" onClick={resetRecorder}>Reset</button>}
-        {status === 'idle' && <button className="button secondary" onClick={testSpeechRecognition}>Test STT</button>} */}
+        {status === 'idle' && <button className="button secondary" onClick={resetRecorder}>Reset</button>}
       </div>
       <div>
         <div className="status">
@@ -510,6 +493,11 @@ export default function Recorder({ onCreated }) {
           )}
         </div>
         {duration ? <div className="small">Recorded duration: {duration}s</div> : null}
+        {error && (
+          <div className="error" style={{color: '#dc3545', marginTop: '8px', fontSize: '14px'}}>
+            ⚠️ {error}
+          </div>
+        )}
         {mobileDetected && (
           <div className="small" style={{color: '#ff6b6b', marginTop: '8px'}}>
             📱 Mobile browser detected. Speech recognition may not work reliably. 

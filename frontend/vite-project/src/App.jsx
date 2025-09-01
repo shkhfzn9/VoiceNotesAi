@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import api, { API_BASE_URL } from './api'
 import Recorder from './components/Recorder'
 import NoteItem from './components/NoteItem'
+import MobileTest from './mobile-test'
 import './mobile.css'
 
 export default function App() {
@@ -21,6 +22,9 @@ export default function App() {
   
   // Toast state
   const [toasts, setToasts] = useState([])
+  
+  // Mobile test state
+  const [showMobileTest, setShowMobileTest] = useState(false)
 
   // Toast functions
   const showToast = (message, type = 'info', duration = 4000) => {
@@ -221,7 +225,23 @@ export default function App() {
     <div className="app">
       <div className="header">
         <h1>Voice Notes</h1>
+        <button 
+          onClick={() => setShowMobileTest(!showMobileTest)}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px'
+          }}
+        >
+          {showMobileTest ? 'Hide' : 'Show'} Mobile Test
+        </button>
       </div>
+
+      {showMobileTest && <MobileTest />}
 
       <div className="grid">
         {/* Left column: recorder + list */}
