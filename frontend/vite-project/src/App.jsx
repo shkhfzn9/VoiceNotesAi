@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import api, { API_BASE_URL } from './api'
 import Recorder from './components/Recorder'
 import NoteItem from './components/NoteItem'
+import './mobile.css'
 
 export default function App() {
   const [notes, setNotes] = useState([])

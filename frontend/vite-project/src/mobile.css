@@ -1,0 +1,234 @@
+/* Mobile-specific styles for Voice Notes AI */
+
+/* Mobile device detection */
+@media (max-width: 768px) {
+  .recorder {
+    padding: 16px;
+    margin: 8px;
+  }
+  
+  .recorder .buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  
+  .recorder .button {
+    padding: 16px 24px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    min-height: 48px; /* Better touch targets */
+  }
+  
+  .recorder .button.primary {
+    background: #007bff;
+    color: white;
+  }
+  
+  .recorder .button.primary:hover {
+    background: #0056b3;
+  }
+  
+  .recorder .button.danger {
+    background: #dc3545;
+    color: white;
+  }
+  
+  .recorder .button.danger:hover {
+    background: #c82333;
+  }
+  
+  .recorder .status {
+    font-size: 14px;
+    margin-bottom: 12px;
+    line-height: 1.4;
+  }
+  
+  .recorder .live {
+    min-height: 80px;
+    padding: 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    background: #f8f9fa;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  
+  .recorder .small {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 8px;
+  }
+  
+  /* Mobile-specific warning styles */
+  .mobile-warning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 12px 0;
+    font-size: 14px;
+    color: #856404;
+  }
+  
+  /* Better touch targets for mobile */
+  .note-item {
+    padding: 16px;
+    margin: 8px 0;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 60px; /* Better touch targets */
+  }
+  
+  .note-item:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+  }
+  
+  .note-item .title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #212529;
+  }
+  
+  .note-item .transcript {
+    font-size: 14px;
+    color: #6c757d;
+    line-height: 1.4;
+    margin-bottom: 8px;
+  }
+  
+  .note-item .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  
+  .note-item .actions button {
+    padding: 8px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 36px; /* Better touch targets */
+  }
+  
+  .note-item .actions button:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+  }
+  
+  /* Mobile app-like layout */
+  .app-container {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background: #f8f9fa;
+  }
+  
+  .main-content {
+    padding: 16px;
+    margin: 0;
+  }
+  
+  /* Mobile-friendly form inputs */
+  input, textarea {
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    padding: 12px !important;
+    border-radius: 8px !important;
+    border: 1px solid #dee2e6 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* Mobile-friendly modal */
+  .modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+  }
+  
+  .modal-content {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  
+  /* Mobile-friendly loading states */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    font-size: 16px;
+    color: #6c757d;
+  }
+  
+  .loading::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    border: 2px solid #e9ecef;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 12px;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+}
+
+/* High DPI mobile screens */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .recorder .button {
+    border-width: 0.5px;
+  }
+  
+  .note-item {
+    border-width: 0.5px;
+  }
+}
+
+/* Landscape orientation on mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+  .recorder {
+    padding: 12px;
+  }
+  
+  .recorder .buttons {
+    flex-direction: row;
+    gap: 8px;
+  }
+  
+  .recorder .button {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+}
