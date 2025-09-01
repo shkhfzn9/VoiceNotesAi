@@ -1,7 +1,46 @@
 /* Mobile-specific styles for Voice Notes AI */
 
+/* Hide mobile view selector on desktop */
+.mobile-view-selector {
+  display: none;
+}
+
+/* Hide mobile test button and content on laptop and desktop screens */
+.mobile-test-container,
+.mobile-test-button {
+  display: none;
+}
+
+/* Show mobile test button and content only on mobile screens */
+@media (max-width: 768px) {
+  .mobile-test-container,
+  .mobile-test-button {
+    display: block !important;
+  }
+}
+
 /* Mobile device detection */
 @media (max-width: 768px) {
+  /* Hide view mode buttons on mobile to prevent UI alignment issues */
+  .view-mode-buttons {
+    display: none !important;
+  }
+  
+  /* Adjust header layout for mobile */
+  .header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .header h1 {
+    margin: 0;
+  }
+  
+  /* Show mobile view selector on mobile */
+  .mobile-view-selector {
+    display: block !important;
+  }
   .recorder {
     padding: 16px;
     margin: 8px;

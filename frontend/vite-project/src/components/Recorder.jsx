@@ -37,7 +37,6 @@ export default function Recorder({ onCreated }) {
       console.log('  - Speech Recognition:', hasSTT)
       console.log('  - SpeechRecognition:', !!window.SpeechRecognition)
       console.log('  - webkitSpeechRecognition:', !!window.webkitSpeechRecognition)
-      console.log('  - User Agent:', navigator.userAgent)
       
       setSupport({ mic, stt: hasSTT })
     }
@@ -75,6 +74,41 @@ export default function Recorder({ onCreated }) {
     // Fallback for older browsers
     console.log('[Recorder] No specific format supported, using default')
     return ''
+  }
+
+  // Test function to debug speech recognition
+  function testSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Speech Recognition not supported in this browser')
+      return
+    }
+    
+    console.log('[Recorder] Testing speech recognition...')
+    const testRecog = new SpeechRecognition()
+    testRecog.lang = 'en-US'
+    testRecog.continuous = false
+    testRecog.interimResults = false
+    testRecog.maxAlternatives = 1
+    
+    testRecog.onstart = () => console.log('[Test] Speech recognition started')
+    testRecog.onresult = (e) => {
+      const transcript = e.results[0][0].transcript
+      console.log('[Test] Transcript received:', transcript)
+      alert('Test successful! Transcript: ' + transcript)
+    }
+    testRecog.onerror = (e) => {
+      console.error('[Test] Speech recognition error:', e.error, e.message)
+      alert('Test failed: ' + e.error + ' - ' + e.message)
+    }
+    testRecog.onend = () => console.log('[Test] Speech recognition ended')
+    
+    try {
+      testRecog.start()
+    } catch (err) {
+      console.error('[Test] Failed to start test:', err)
+      alert('Failed to start test: ' + err.message)
+    }
   }
 
   // Function to completely reset recorder state
@@ -143,24 +177,11 @@ export default function Recorder({ onCreated }) {
     }
 
     try {
-      // Simplified audio constraints for better mobile compatibility
-      const audioConstraints = mobileDetected ? {
-        // Minimal constraints for mobile
-        echoCancellation: true,
-        noiseSuppression: true
-      } : {
-        // Desktop constraints
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 44100,
-        channelCount: 1
-      }
-      
-      console.log('[Recorder] Requesting microphone with constraints:', audioConstraints)
+      // Use the exact same simple constraints that worked in the test
+      console.log('[Recorder] Requesting microphone with simple constraints')
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: audioConstraints
+        audio: true  // Simple constraint that works on all devices
       })
       
       mediaStreamRef.current = stream
@@ -189,7 +210,7 @@ export default function Recorder({ onCreated }) {
         // Wait a bit for final speech recognition results to be processed
         if (support.stt && recogRef.current) {
           console.log('[Recorder] Waiting for final transcript processing...')
-          await new Promise(resolve => setTimeout(resolve, 1500)) // Wait 1.5 seconds for final transcripts
+          await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds for final transcripts
         }
         
         // Pass the recording ID to ensure we use the correct transcript
@@ -204,19 +225,12 @@ export default function Recorder({ onCreated }) {
       mr.start(1000) // Record in 1-second chunks
       console.log('[Recorder] Media recorder started')
 
-      // Start STT (if available) with mobile-specific settings
+      // Start STT using the exact same approach that worked in the test
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       if (SpeechRecognition && support.stt) {
         console.log('[Recorder] Starting speech recognition for session:', newRecordingId)
         
-        // Set a timeout to detect if speech recognition fails to start
-        const sttTimeout = setTimeout(() => {
-          if (recordingIdRef.current === newRecordingId && (!currentTranscriptRef.current || !currentTranscriptRef.current.trim())) {
-            console.warn('[Recorder] Speech recognition timeout - no transcript detected')
-            // Don't change status here, let the user continue recording
-          }
-        }, mobileDetected ? 10000 : 5000) // Longer timeout for mobile
-        
+        // Use the same settings as the successful test
         setTimeout(() => {
           try {
             const recog = new SpeechRecognition()
@@ -225,16 +239,10 @@ export default function Recorder({ onCreated }) {
             recog.interimResults = true
             recog.maxAlternatives = 1
             
-            // Mobile-specific settings
-            if (mobileDetected) {
-              console.log('[STT] Using mobile-optimized speech recognition settings')
-            }
+            console.log('[STT] Using same settings as successful test')
             
             recog.onresult = (e) => {
               console.log('[STT] Raw results received:', e.results)
-              
-              // Clear the timeout since we got results
-              clearTimeout(sttTimeout)
               
               // Only process results for the current recording session
               if (recordingIdRef.current !== newRecordingId) {
@@ -268,7 +276,6 @@ export default function Recorder({ onCreated }) {
             
             recog.onerror = (e) => {
               console.warn('[STT] Error:', e.error, e.message)
-              clearTimeout(sttTimeout)
               
               if (e.error === 'not-allowed') {
                 setError('Microphone access denied. Please allow microphone access and try again.')
@@ -288,7 +295,6 @@ export default function Recorder({ onCreated }) {
             
             recog.onend = () => { 
               console.log('[STT] Speech recognition ended for session:', newRecordingId)
-              clearTimeout(sttTimeout)
             }
             
             recog.onstart = () => {
@@ -301,11 +307,10 @@ export default function Recorder({ onCreated }) {
             console.log('[Recorder] Speech recognition started successfully for session:', newRecordingId)
           } catch (err) {
             console.error('[Recorder] Failed to start speech recognition:', err)
-            clearTimeout(sttTimeout)
             setStatus('recording') // Fallback to just recording
             setError('Speech recognition failed to start. You can still record and add transcripts manually.')
           }
-        }, mobileDetected ? 2000 : 1000) // Longer delay for mobile to ensure mic is fully ready
+        }, 1000) // Same delay as the test
       } else {
         console.log('[Recorder] No speech recognition support, recording only')
         setStatus('recording') // No STT support, just recording
@@ -335,7 +340,7 @@ export default function Recorder({ onCreated }) {
           } catch (err) {
             console.warn('[Recorder] Error stopping speech recognition after delay:', err)
           }
-        }, mobileDetected ? 1500 : 1000) // Longer delay for mobile
+        }, 500) // 500ms delay to process final transcripts
       } catch (err) { 
         console.warn('[Recorder] Error stopping speech recognition:', err)
       }
@@ -364,7 +369,6 @@ export default function Recorder({ onCreated }) {
       console.log('[Recorder] Sending to server for session:', recordingId)
       console.log('[Recorder] Current transcript for this session:', currentTranscriptRef.current)
       console.log('[Recorder] Live transcript state:', liveTranscript)
-      console.log('[Recorder] Blob size:', blob.size, 'type:', blob.type)
       
       // Verify this is still the current recording session
       if (recordingIdRef.current !== recordingId) {
@@ -387,7 +391,7 @@ export default function Recorder({ onCreated }) {
         // Check if we're still waiting for speech recognition to finish
         if (recogRef.current && recogRef.current.state !== 'inactive') {
           console.log('[Recorder] Speech recognition still active, waiting a bit more...')
-          await new Promise(resolve => setTimeout(resolve, mobileDetected ? 2000 : 1000))
+          await new Promise(resolve => setTimeout(resolve, 1000))
           
           // Check transcript again after waiting
           transcript = currentTranscriptRef.current || liveTranscript || ''
@@ -400,9 +404,8 @@ export default function Recorder({ onCreated }) {
             '• You didn\'t speak clearly enough\n' +
             '• Microphone permissions were denied\n' +
             '• Speech recognition failed to start\n' +
-            '• Speech recognition is still processing\n' +
-            (mobileDetected ? '• Mobile browsers have limited speech recognition support\n' : '') +
-            '\nPlease enter what you said, or click Cancel to re-record:',
+            '• Speech recognition is still processing\n\n' +
+            'Please enter what you said, or click Cancel to re-record:',
             ''
           )
           if (manualTranscript === null) {
@@ -422,12 +425,12 @@ export default function Recorder({ onCreated }) {
       }
 
       // Final validation - if still no transcript, cancel the operation
-      if (!transcript || !transcript.trim()) {
-        console.error('[Recorder] Still no transcript after all attempts')
-        setError('Transcript is required. Please speak clearly or enter manually.')
-        setStatus('idle')
-        return
-      }
+              if (!transcript || !transcript.trim()) {
+          console.error('[Recorder] Still no transcript after all attempts')
+          setError('Transcript is required. Please speak clearly or enter manually.')
+          setStatus('idle')
+          return
+        }
 
       const fd = new FormData()
       fd.append('audio', blob, 'note.webm')
@@ -444,8 +447,7 @@ export default function Recorder({ onCreated }) {
         duration: secs,
         title: t,
         blobSize: blob.size,
-        blobType: blob.type,
-        mobileDetected: mobileDetected
+        blobType: blob.type
       })
 
       // Don't set Content-Type manually - let browser handle multipart boundary
@@ -473,7 +475,8 @@ export default function Recorder({ onCreated }) {
       <div className="buttons">
         {status === 'idle' && <button className="button primary" onClick={start}>Start Recording</button>}
         {status !== 'idle' && <button className="button danger" onClick={stop}>Stop Recording</button>}
-        {status === 'idle' && <button className="button secondary" onClick={resetRecorder}>Reset</button>}
+        {/* {status === 'idle' && <button className="button secondary" onClick={resetRecorder}>Reset</button>}
+        {status === 'idle' && <button className="button secondary" onClick={testSpeechRecognition}>Test STT</button>} */}
       </div>
       <div>
         <div className="status">
@@ -481,7 +484,6 @@ export default function Recorder({ onCreated }) {
           {status === 'recording' && support.stt && <span> • Starting speech recognition...</span>}
           {status === 'transcribing' && <span> • Speak now - your words will appear below</span>}
           {!support.stt && <span className="small"> (Tip: Use Chrome/Edge for in-browser transcription)</span>}
-          {mobileDetected && <span className="small"> (Mobile detected - speech recognition may be limited)</span>}
         </div>
         <div className="live" aria-live="polite">
           {liveTranscript || (
@@ -492,7 +494,7 @@ export default function Recorder({ onCreated }) {
               : '(live transcript will appear here while recording...)'
           )}
         </div>
-        {duration ? <div className="small">Recorded duration: {duration}s</div> : null}
+                {duration ? <div className="small">Recorded duration: {duration}s</div> : null}
         {error && (
           <div className="error" style={{color: '#dc3545', marginTop: '8px', fontSize: '14px'}}>
             ⚠️ {error}
@@ -504,7 +506,7 @@ export default function Recorder({ onCreated }) {
             You can still record and add transcripts manually.
           </div>
         )}
+        </div>
       </div>
-    </div>
   )
 }

@@ -226,6 +226,7 @@ export default function App() {
       <div className="header">
         <h1>Voice Notes</h1>
         <button 
+          className="mobile-test-button"
           onClick={() => setShowMobileTest(!showMobileTest)}
           style={{
             padding: '8px 12px',
@@ -241,7 +242,7 @@ export default function App() {
         </button>
       </div>
 
-      {showMobileTest && <MobileTest />}
+      {showMobileTest && <div className="mobile-test-container"><MobileTest /></div>}
 
       <div className="grid">
         {/* Left column: recorder + list */}
@@ -276,7 +277,7 @@ export default function App() {
                viewMode === 'summary' ? 'Generate Summary' : 'Note Details'}
             </h2>
             {selected && (
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="view-mode-buttons" style={{ display: 'flex', gap: '8px' }}>
                 <button 
                   className="button secondary" 
                   onClick={() => setViewMode('details')}
@@ -301,6 +302,28 @@ export default function App() {
               </div>
             )}
           </div>
+          
+          {/* Mobile-friendly view mode selector */}
+          {selected && (
+            <div className="mobile-view-selector" style={{ marginBottom: '16px' }}>
+              <select 
+                value={viewMode} 
+                onChange={(e) => setViewMode(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  backgroundColor: 'white'
+                }}
+              >
+                <option value="details">📄 View Details</option>
+                <option value="edit">✏️ Edit Note</option>
+                <option value="summary">🤖 Generate Summary</option>
+              </select>
+            </div>
+          )}
           
           {!selected ? (
             <div className="small">
